@@ -6,7 +6,7 @@ import seaborn as sns
 # Load data
 @st.cache_data
 def load_data():
-    df = pd.read_csv(r"C:\Users\satyabrata swain\Desktop\matiks\Matiks - Data Analyst Data - Sheet1.csv")
+    df = pd.read_csv("Matiks - Data Analyst Data - Sheet1.csv")
     df.columns = df.columns.str.replace(" ", "_").str.strip()
     st.write("📋 Columns in your CSV:", df.columns.tolist())
 
