@@ -12,8 +12,8 @@ def load_data():
 
     # Parse date columns safely
     if "Signup_Date" in df.columns and "Last_Login" in df.columns:
-        df["Signup_Date"] = pd.to_datetime(df["Signup_Date"])
-        df["Last_Login"] = pd.to_datetime(df["Last_Login"])
+        df["Signup_Date"] = pd.to_datetime(df["Signup_Date"], errors='coerce')
+        df["Last_Login"] = pd.to_datetime(df["Last_Login"], errors='coerce')
 
         df["Days_Since_Last_Login"] = (df["Last_Login"].max() - df["Last_Login"]).dt.days
         df["Days_Active"] = (df["Last_Login"] - df["Signup_Date"]).dt.days.replace(0, 1)
@@ -45,12 +45,13 @@ col1.metric("Total Users", len(filtered_df))
 col2.metric("Revenue ($)", f"{filtered_df['Total_Revenue_USD'].sum():,.2f}")
 col3.metric("Churn Risk Users", filtered_df["Churn_Risk"].sum())
 
-# Daily/Weekly/Monthly Active Users
-st.subheader("📈 DAU / WAU / MAU (Simulated)")
-date_range = pd.date_range(start=filtered_df["Signup_Date"].min(), end=filtered_df["Last_Login"].max())
-dau = pd.Series([filtered_df.sample(frac=0.2).shape[0] for _ in date_range], index=date_range)
-wau = dau.rolling(window=7).mean()
-mau = dau.rolling(window=30).mean()
+# DAU / WAU / MAU using actual data
+st.subheader("📈 DAU / WAU / MAU (Actual)")
+
+filtered_df["Login_Date"] = filtered_df["Last_Login"].dt.date
+dau = filtered_df.groupby("Login_Date")["User_ID"].nunique()
+wau = dau.rolling(7).mean()
+mau = dau.rolling(30).mean()
 
 fig, ax = plt.subplots()
 ax.plot(dau.index, dau, label="DAU")
@@ -72,12 +73,12 @@ st.pyplot(fig2)
 # Churn Segments Pie Chart
 st.subheader("📉 Churn Segments")
 def churn_reason(row):
-    if row["Total_Play_Sessions"] < 5:
-        return "Low Sessions (<5)"
-    elif row["Days_Since_Last_Login"] > 14:
+    if row["Days_Since_Last_Login"] > 14:
         return "Inactive >14 Days"
     elif row["Avg_Session_Duration_Min"] < 5:
         return "Short Sessions (<5 min)"
+    elif row["Total_Play_Sessions"] < 5:
+        return "Low Sessions (<5)"
     return "Engaged"
 
 filtered_df["Churn_Category"] = filtered_df.apply(churn_reason, axis=1)
