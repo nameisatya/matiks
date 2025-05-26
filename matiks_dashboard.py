@@ -44,7 +44,7 @@ st.subheader("\U0001F4C8 DAU / WAU / MAU (Actual)")
 filtered_df["Login_Date"] = filtered_df["Last_Login"].dt.date
 dau = filtered_df.groupby("Login_Date")["User_ID"].nunique()
 wau = dau.rolling(7).mean()
-mau = dau.rolling(30).mean()
+mau = dau.rolling(14).mean()
 
 fig, ax = plt.subplots()
 ax.plot(dau.index, dau, label="DAU")
