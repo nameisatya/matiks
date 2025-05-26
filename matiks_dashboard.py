@@ -1,4 +1,4 @@
-import streamlit as st
+'''import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -150,3 +150,55 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+'''
+
+import streamlit as st
+import pandas as pd
+import altair as alt
+
+# Load the data
+df = pd.read_csv("Matiks - Data Analyst Data - Sheet1.csv")
+
+# Preprocess dates
+df['Signup_Date'] = pd.to_datetime(df['Signup_Date'], format='%d-%b-%y')
+df['Last_Login'] = pd.to_datetime(df['Last_Login'], format='%d-%b-%y')
+df['Days_Since_Last_Login'] = (pd.to_datetime("2025-05-26") - df['Last_Login']).dt.days
+df['Churn_Risk'] = df['Days_Since_Last_Login'] > 14
+df['Signup_Month'] = df['Signup_Date'].dt.to_period('M').astype(str)
+df['Last_Login_Month'] = df['Last_Login'].dt.to_period('M').astype(str)
+
+st.title("📊 Matiks User Analytics Dashboard")
+
+# Filters
+with st.sidebar:
+    st.header("Filters")
+    device = st.multiselect("Device Type", options=df['Device_Type'].unique(), default=df['Device_Type'].unique())
+    tier = st.multiselect("Subscription Tier", options=df['Subscription_Tier'].unique(), default=df['Subscription_Tier'].unique())
+    mode = st.multiselect("Game Mode", options=df['Preferred_Game_Mode'].unique(), default=df['Preferred_Game_Mode'].unique())
+
+# Apply filters
+filtered_df = df[df['Device_Type'].isin(device) & df['Subscription_Tier'].isin(tier) & df['Preferred_Game_Mode'].isin(mode)]
+
+# DAU / WAU / MAU approximation using last login
+login_counts = filtered_df.groupby('Last_Login').size().reset_index(name='Active_Users')
+st.subheader("📈 Daily Active Users (DAU)")
+st.line_chart(login_counts.set_index('Last_Login'))
+
+# Revenue trend
+rev_month = filtered_df.groupby('Last_Login_Month')['Total_Revenue_USD'].sum().reset_index()
+st.subheader("💰 Monthly Revenue Trend")
+st.bar_chart(rev_month.set_index('Last_Login_Month'))
+
+# Breakdown by device type
+st.subheader("📱 Revenue by Device Type")
+device_rev = filtered_df.groupby('Device_Type')['Total_Revenue_USD'].sum().reset_index()
+st.altair_chart(alt.Chart(device_rev).mark_bar().encode(x='Device_Type', y='Total_Revenue_USD', tooltip=['Device_Type', 'Total_Revenue_USD']), use_container_width=True)
+
+# Churn risk overview
+st.subheader("⚠️ Churn Risk Breakdown")
+st.dataframe(filtered_df[['User_ID', 'Last_Login', 'Days_Since_Last_Login', 'Churn_Risk']].sort_values(by='Days_Since_Last_Login', ascending=False).head(10))
+
+# High-value users
+st.subheader("🌟 Top 10 High-Value Users")
+hv_users = filtered_df.sort_values(by='Total_Revenue_USD', ascending=False).head(10)
+st.table(hv_users[['Username', 'Total_Revenue_USD', 'Total_Hours_Played', 'Total_Play_Sessions']])
