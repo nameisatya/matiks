@@ -1,29 +1,22 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import seaborn as sns
+import matplotlib.dates as mdates
 
 # Load data
 @st.cache_data
 def load_data():
     df = pd.read_csv("Matiks - Data Analyst Data - Sheet1.csv")
     df.columns = df.columns.str.replace(" ", "_").str.strip()
-    st.write("\U0001F4CB Columns in your CSV:", df.columns.tolist())
 
-    # Parse date columns safely
-    if "Signup_Date" in df.columns and "Last_Login" in df.columns:
-        df["Signup_Date"] = pd.to_datetime(df["Signup_Date"])
-        df["Last_Login"] = pd.to_datetime(df["Last_Login"])
+    # Parse date columns
+    df["Signup_Date"] = pd.to_datetime(df["Signup_Date"], errors='coerce')
+    df["Last_Login"] = pd.to_datetime(df["Last_Login"], errors='coerce')
 
-        df["Days_Since_Last_Login"] = (df["Last_Login"].max() - df["Last_Login"]).dt.days
-        df["Days_Active"] = (df["Last_Login"] - df["Signup_Date"]).dt.days.replace(0, 1)
-    else:
-        st.error("❌ Missing 'Signup_Date' or 'Last_Login' columns in CSV.")
-        df["Days_Since_Last_Login"] = 0
-        df["Days_Active"] = 1
+    df["Days_Since_Last_Login"] = (df["Last_Login"].max() - df["Last_Login"]).dt.days
+    df["Days_Active"] = (df["Last_Login"] - df["Signup_Date"]).dt.days.replace(0, 1)
 
-    # Derived metrics
     df["Sessions_Per_Day"] = df["Total_Play_Sessions"] / df["Days_Active"]
     df["High_Value_User"] = df["Total_Revenue_USD"] >= df["Total_Revenue_USD"].quantile(0.9)
     df["Churn_Risk"] = (df["Total_Play_Sessions"] < 5) | (df["Days_Since_Last_Login"] > 14) | (df["Avg_Session_Duration_Min"] < 5)
@@ -46,7 +39,7 @@ col1.metric("Total Users", len(filtered_df))
 col2.metric("Revenue ($)", f"{filtered_df['Total_Revenue_USD'].sum():,.2f}")
 col3.metric("Churn Risk Users", filtered_df["Churn_Risk"].sum())
 
-# DAU / WAU / MAU (Real Data)
+# DAU / WAU / MAU (Actual)
 st.subheader("\U0001F4C8 DAU / WAU / MAU (Actual)")
 filtered_df["Login_Date"] = filtered_df["Last_Login"].dt.date
 dau = filtered_df.groupby("Login_Date")["User_ID"].nunique()
@@ -60,7 +53,7 @@ ax.plot(mau.index, mau, label="MAU")
 ax.set_title("User Activity Over Time")
 ax.legend()
 ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
 fig.autofmt_xdate()
 st.pyplot(fig)
 
@@ -72,6 +65,8 @@ fig2, ax2 = plt.subplots()
 rev_trend.plot(kind="bar", ax=ax2, color="green")
 ax2.set_title("Monthly Revenue")
 ax2.set_ylabel("USD")
+ax2.set_xlabel("Month")
+fig2.autofmt_xdate()
 st.pyplot(fig2)
 
 # Churn Segments Pie Chart
