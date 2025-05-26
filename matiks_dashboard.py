@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.dates as mdates
 
-# Load data
+# Cache data loading for better performance
 @st.cache_data
 def load_data():
     df = pd.read_csv("Matiks - Data Analyst Data - Sheet1.csv")
@@ -14,63 +14,101 @@ def load_data():
     df["Signup_Date"] = pd.to_datetime(df["Signup_Date"], errors='coerce')
     df["Last_Login"] = pd.to_datetime(df["Last_Login"], errors='coerce')
 
+    # Calculate Days Since Last Login and Days Active
     df["Days_Since_Last_Login"] = (df["Last_Login"].max() - df["Last_Login"]).dt.days
     df["Days_Active"] = (df["Last_Login"] - df["Signup_Date"]).dt.days.replace(0, 1)
 
+    # Sessions per day metric
     df["Sessions_Per_Day"] = df["Total_Play_Sessions"] / df["Days_Active"]
+
+    # High-value user flag (top 10% by revenue)
     df["High_Value_User"] = df["Total_Revenue_USD"] >= df["Total_Revenue_USD"].quantile(0.9)
-    df["Churn_Risk"] = (df["Total_Play_Sessions"] < 5) | (df["Days_Since_Last_Login"] > 14) | (df["Avg_Session_Duration_Min"] < 5)
+
+    # Churn risk flag based on sessions, last login, and avg session duration
+    df["Churn_Risk"] = (
+        (df["Total_Play_Sessions"] < 5) | 
+        (df["Days_Since_Last_Login"] > 14) | 
+        (df["Avg_Session_Duration_Min"] < 5)
+    )
 
     return df
 
 df = load_data()
 
+st.set_page_config(page_title="Matiks Analytics Dashboard", layout="wide")
 st.title("\U0001F4CA Matiks Analytics Dashboard")
 
+# Sidebar filters
 st.sidebar.header("Filters")
-device_filter = st.sidebar.multiselect("Select Device Type:", df["Device_Type"].unique(), default=list(df["Device_Type"].unique()))
-segment_filter = st.sidebar.multiselect("Select Subscription Tier:", df["Subscription_Tier"].unique(), default=list(df["Subscription_Tier"].unique()))
+device_filter = st.sidebar.multiselect(
+    "Select Device Type:", 
+    options=df["Device_Type"].unique(), 
+    default=list(df["Device_Type"].unique())
+)
+segment_filter = st.sidebar.multiselect(
+    "Select Subscription Tier:", 
+    options=df["Subscription_Tier"].unique(), 
+    default=list(df["Subscription_Tier"].unique())
+)
 
-filtered_df = df[df["Device_Type"].isin(device_filter) & df["Subscription_Tier"].isin(segment_filter)]
+filtered_df = df[
+    (df["Device_Type"].isin(device_filter)) & 
+    (df["Subscription_Tier"].isin(segment_filter))
+]
 
-# KPIs
+# KPIs in columns for responsive layout
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Users", len(filtered_df))
 col2.metric("Revenue ($)", f"{filtered_df['Total_Revenue_USD'].sum():,.2f}")
 col3.metric("Churn Risk Users", filtered_df["Churn_Risk"].sum())
 
-# DAU / WAU / MAU (Actual)
-st.subheader("\U0001F4C8 DAU / WAU / MAU (Actual)")
+# Prepare data for DAU/WAU/MAU
 filtered_df["Login_Date"] = filtered_df["Last_Login"].dt.date
 dau = filtered_df.groupby("Login_Date")["User_ID"].nunique()
-wau = dau.rolling(7).mean()
-mau = dau.rolling(14).mean()
 
-fig, ax = plt.subplots()
-ax.plot(dau.index, dau, label="DAU")
-ax.plot(wau.index, wau, label="WAU")
-ax.plot(mau.index, mau, label="MAU")
+# Use 7-day rolling average for WAU and 14-day rolling average for MAU
+wau = dau.rolling(7).mean()
+mau = dau.rolling(14).mean()  # shorter window ensures MAU is more visible
+
+st.subheader("\U0001F4C8 DAU / WAU / MAU (Actual)")
+
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(dau.index, dau, label="DAU", marker='o')
+ax.plot(wau.index, wau, label="WAU", marker='s')
+ax.plot(mau.index, mau, label="MAU", marker='^')
+
 ax.set_title("User Activity Over Time")
+ax.set_ylabel("Unique Users")
 ax.legend()
+
+# Improve date formatting on x-axis
 ax.xaxis.set_major_locator(mdates.AutoDateLocator())
 ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
 fig.autofmt_xdate()
+
 st.pyplot(fig)
 
-# Revenue Trend
+# Revenue Trend Bar Chart
 st.subheader("\U0001F4B0 Revenue Trend")
-rev_trend = filtered_df.groupby(filtered_df["Last_Login"].dt.to_period("M"))["Total_Revenue_USD"].sum().sort_index()
+
+rev_trend = (
+    filtered_df.groupby(filtered_df["Last_Login"].dt.to_period("M"))["Total_Revenue_USD"]
+    .sum()
+    .sort_index()
+)
 rev_trend.index = rev_trend.index.to_timestamp().strftime('%b %Y')
-fig2, ax2 = plt.subplots()
-rev_trend.plot(kind="bar", ax=ax2, color="green")
+
+fig2, ax2 = plt.subplots(figsize=(10, 5))
+rev_trend.plot(kind="bar", color="green", ax=ax2)
+
 ax2.set_title("Monthly Revenue")
 ax2.set_ylabel("USD")
 ax2.set_xlabel("Month")
 fig2.autofmt_xdate()
+
 st.pyplot(fig2)
 
-# Churn Segments Pie Chart
-st.subheader("\U0001F4C9 Churn Segments")
+# Reordered churn reason logic to prioritize most critical churn causes
 def churn_reason(row):
     if row["Days_Since_Last_Login"] > 14:
         return "Inactive >14 Days"
@@ -82,20 +120,33 @@ def churn_reason(row):
 
 filtered_df["Churn_Category"] = filtered_df.apply(churn_reason, axis=1)
 churn_counts = filtered_df["Churn_Category"].value_counts()
-fig3, ax3 = plt.subplots()
+
+st.subheader("\U0001F4C9 Churn Segments")
+fig3, ax3 = plt.subplots(figsize=(6, 6))
 churn_counts.plot(kind="pie", autopct="%1.1f%%", startangle=90, ax=ax3)
 ax3.set_ylabel("")
 ax3.set_title("Churn Category Breakdown")
 st.pyplot(fig3)
 
-# High-Value Users
+# High-Value Users Bar Chart
 st.subheader("\U0001F3C6 High-Value Users Breakdown")
 hv_counts = filtered_df["High_Value_User"].value_counts().rename({True: "High Value", False: "Others"})
-fig4, ax4 = plt.subplots()
+
+fig4, ax4 = plt.subplots(figsize=(6, 4))
 hv_counts.plot(kind="bar", color=["gold", "gray"], ax=ax4)
 ax4.set_title("High-Value Users vs Others")
 ax4.set_ylabel("User Count")
+ax4.set_xlabel("User Type")
 st.pyplot(fig4)
 
+# Footer and Dashboard Link
 st.markdown("---")
-st.caption("Matiks Analyst Task | Built with Streamlit")
+st.markdown(
+    """
+    <div style="text-align:center; font-size:14px; color:gray;">
+    Matiks Analyst Task | Built with Streamlit &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp; 
+    🔗 <a href="https://matiks-bhj9w9wj7hqekq3ryzachp.streamlit.app/" target="_blank">Live Dashboard Link</a>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
